@@ -1,0 +1,388 @@
+---
+title: "Final Project"
+author: "Tanay Sawant 19203264"
+date: "29/07/2020"
+output: html_document
+runtime : shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Loading the required libraries:
+
+```{r, libraries ,warning=FALSE, message=FALSE}
+
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(reshape2)
+library(ggiraph)
+library(gganimate)
+library(readr)
+library(shiny)
+library(tibble)
+
+```
+
+### Question 1.)
+
+
+```{r, Question 1}
+
+# Reading in the exo planet dataset as tibble.
+
+exo<- as_tibble(read.csv("exo_data.csv"))
+
+# Converting columns of flag and meth as factor. Rest all columns are already as desired in the question.
+
+exo<- exo %>% 
+  mutate_at(c("flag","meth"),as.factor)
+glimpse(exo[,c(2,14)])
+
+```
+
+### Question 2.)
+
+```{r, Question 2}
+
+# Excluding the exoplanets with an unknown method of discovery.
+
+exo<-filter(exo,meth!="")
+
+```
+
+
+### Question 3.)
+
+
+```{r, Question 3, warning=FALSE}
+
+# A Graphic which illustrates the relationship between the 
+# log-distances from the Sun and the methods of discovery
+
+p<-ggplot(exo,aes(x=meth,y=log(dist),fill=meth,na.rm=T))+
+  geom_boxplot()+ 
+  xlab('Method of Discovery') +
+  ylab('Log Distance from the Sun') +
+  ggtitle('Relationship between Log Distances from the Sun and Method of Discovery')+
+  theme(legend.position = "none")
+print(p)
+
+```
+
+### Question 4.)
+
+
+```{r, Question 4, warning=FALSE}
+
+# Adding the Onclick column for the scatterplot below.
+
+exo$onclick=sprintf("window.open(\"%s%s\")",
+                         "http://www.openexoplanetcatalogue.com/planet/",
+                         as.character(exo$id))
+
+# Scatterplots of the log-mass versus log-distances, separating by methods of discovery
+
+p<-ggplot(exo,
+          aes(x=log(mass),y=log(dist),colour=meth))+
+  xlab('Planetary Mass (in Log)') +
+  ylab('Distance from Sun (in log)') +
+  ggtitle('Log Distances from the Sun and Log Planetary Mass values')+
+  theme(legend.position = "none")
+
+p<- p + geom_point_interactive(aes(data_id=id,
+                                 tooltip = id,
+                                 onclick=onclick),
+                               size=2)+
+  facet_grid(~meth)
+
+ggiraph(code = print(p), width = 0.9)
+
+```
+
+
+
+### Question 5.)
+
+
+```{r, Question 5}
+
+# Renaming the radius into jupiter_radius.
+
+exo<- exo %>%
+  rename(jupiter_radius=radius)
+
+# Creating a new column called earth_radius which is 11.2 times the Jupiter radius.
+
+exo<- exo%>%
+  mutate(earth_radius=jupiter_radius%>% multiply_by(11.2))
+
+```
+
+
+### Question 6.)
+
+
+```{r, Question 6}
+
+# Setting a seed to obtain the same result of kmeans over multiple runs.
+
+set.seed(19203264)
+
+#Focusing on log earth_radius and log period columns have no missing values.
+
+exo<-exo %>%
+  filter(!is.na(log(earth_radius)) & !is.na(log(period)))
+
+# Performing kmeans on the two columns with 4 clusters.
+
+kmean=kmeans(log(exo[,c(27,5)]),4)
+
+# Printing the results of the cluster segregation obtained after performing kmeans.
+
+table(kmean$cluster) 
+
+```
+
+### Question 7.)
+
+
+```{r, Question 7}
+
+# Adding the clustering labels to the dataset through a new factor column called type.
+# These labels are according to the image provided on wikipedia.
+
+exo<- exo %>%
+  mutate(type = factor(kmean$cluster, labels = c("cold_gas_giants", "others",
+                                                 "hot_jupiters","rocky")))
+
+# Checking the corresponding change in the labels of the column type.
+
+table(exo$type)
+
+# Producing the scatterplot highlighting these clusters.
+
+p<-ggplot(exo,
+          aes(x=log(period),y=log(earth_radius),colour=type))+
+  geom_point()+
+  xlab('Period (in Log)') +
+  ylab('Earth Radius (in log)') +
+  ggtitle('Log Distances from the Sun and Log Planetary Mass values')+
+  theme_dark()
+
+print(p)
+
+```
+
+### Question 8.)
+
+
+```{r, Question 8, warning=FALSE}
+
+# Using a violin plot to illustrate how these clusters relate to the log-mass of the exoplanets.
+
+p<-ggplot(exo,
+          aes(x=type, y=log(mass),fill=type))+
+  ylab('Planetary Mass (in Log)') +
+  xlab('Cluster Type') +
+  ggtitle('Log Mass v/s Cluster Type')+
+  theme(legend.position = "none")
+
+p<- p + geom_violin()
+print(p)
+```
+
+### Question 9.)
+
+
+```{r, Question 9, warning=FALSE}
+
+# Splitting the two columns r_asc and decl into degrees, minutes and seconds for converting them into seconds.
+
+r_asc_split<- colsplit(exo$r_asc, " ", c("degree", "minutes","seconds"))
+decl_split<- colsplit(exo$decl, " ", c("hours", "minutes","seconds"))
+
+# Transforming r_asc and decl into two new variables that are the same variables but
+# in values of seconds.
+
+exo<- exo%>%
+  mutate(r_asc_seconds = r_asc_split$degree %>% multiply_by(3600) %>%
+           add(r_asc_split$minutes %>% multiply_by(60)) %>%
+           add(r_asc_split$seconds),
+         
+         decl_seconds = decl_split$hours %>% multiply_by(3600) %>%
+           add(decl_split$minutes %>% multiply_by(60)) %>%
+           add(decl_split$seconds))
+
+# Plot of Celestial map for the exoplanets.
+
+p<-ggplot(exo,
+          aes(x=r_asc_seconds, y=decl_seconds, colour=type))+
+  geom_point()+
+  xlab('Right Ascension (in Seconds)') +
+  ylab('Declination (in Seconds)') +
+  ggtitle('Celestial map for the exoplanets')
+
+print(p)
+
+```
+
+### Question 10.)
+
+
+```{r, Question 10}
+
+# Specific reduced dataset for animated time series.
+
+exo_ts<- exo %>%
+  group_by(meth, year) %>%
+  summarise(count = n()) %>%
+  mutate(count = cumsum(count))
+
+# Animated time series plot.
+
+p<- ggplot(na.omit(exo_ts),
+           aes(x=year, y=count, group=meth, col= meth))+
+  geom_line(size=0.75)+
+  geom_point(size=2.5, col= "black")+
+  transition_reveal(year)+
+  xlab('Year') +
+  ylab('Number of Planets Discovered') +
+  ggtitle('Evolution of Number of Planets discovered over the years')+
+  theme_dark()+
+  theme(axis.text.x=element_text(color = "black", size=11, angle=30, vjust=.8, hjust=0.8))
+animate(p)
+
+```
+
+### Question 11 & 14.)
+
+
+```{r, Question 11 and 14, warning=FALSE}
+
+# Creating shiny.
+# The user interface page.
+
+ui <- fluidPage(
+
+#The title to be displayed.
+  
+  titlePanel("Exoplanet"),
+
+# Sidebar layout format.
+  
+  sidebarLayout(
+    sidebarPanel(
+
+# Slider Input for the Year of Discovery.
+      
+      sliderInput(inputId = "year",
+              label = "Year",
+              min = 2009,
+              max=2018,
+              value = 2009),
+  
+# select Input for the type of the exoplanet.
+
+      selectInput(inputId = "type",
+              label = "Exoplanet Type",
+              choices = list("rocky",
+                             "hot_jupiters",
+                             "cold_gas_giants",
+                             "others",
+                             "all"),
+              selected = "rocky")
+    ),
+
+
+# Main panel.
+
+    mainPanel(
+      plotOutput(outputId = "main_plot", height = "300px")
+    )
+  )
+)
+
+# The server page.
+
+server <- function(input, output) {
+
+# Producing the output plot with the given conditions.
+    
+  output$main_plot <- renderPlot({
+    
+# If the user selects type as "all" to be displayed on the graph, 
+# filtering the data only corresponding to the Year of discovery.
+    
+    if(input$type=="all")
+      x<-exo%>%
+        filter(year<=input$year)
+
+# When the user doesn't select type as "all" to be displayed on the graph,
+# filtering the data with respect to Year and Type.
+
+    else
+      x<-exo%>% 
+        filter(year<=input$year,type==input$type)
+    
+# Scatterplot of log-mass vs log-distance coloured by method of discovery 
+# only of the planets that have been discovered till that year.
+    
+    ggplot(x,
+           aes(x=log(mass),y=log(dist),colour=meth))+
+      geom_point()+
+      xlab('Planetary Mass (in Log)') +
+      ylab('Distance from Sun (in log)') +
+      ggtitle('Log Distances from the Sun and Log Planetary Mass values')
+    
+  })
+}
+
+# Running the Shiny App.
+
+shinyApp(ui=ui,server=server)
+
+```
+
+
+### Question 12 & 13.)
+
+
+```{r, Question 12 and 13}
+
+# Fitting a linear regression model where log period is the response variable and the 
+# logs of host_mass, host_temp and axis are the covariates.
+# Excluding rows that contain at least one missing value. 
+# Including an intercept term in the regression model.
+
+exo_reduced<-exo%>%
+  select(period,host_mass,host_temp,axis)%>%
+  filter(!is.na(log(period)) & !is.na(log(host_mass)) & !is.na(log(host_temp)) & !is.na(log(axis)))
+
+
+linear_reg<-lm(log(period)~log(host_mass)+log(host_temp)+log(axis),data = exo_reduced)
+summary(linear_reg)
+
+```
+
+We have fitted a linear regression model where **log period** is the response variable and the **log values of host_mass, host_temp and axis** are the covariates. 
+
+The residuals have a range (-1.9,1.2) with the median value being -0.00144.The Residual standard error value is **0.2244** on 616 degrees of freedom.   
+
+The p-value observed in the last line is < 0.05 indicating that our model is a **good fit.** The F-Statistic value observed is 9839 on 3 and 616 DF.  
+
+We observe that the p-values of all the covariates is less than 0.05 indicating that **all the covariates are significant.**    
+Specifically,  
+A unit change in log value of host_mass causes a decrease in the log period value by 0.26 keeping other covariates constant.  
+A unit change in log value of host_temp causes a decrease in the log period value by 0.16 keeping other covariates constant.  
+A unit change in log value of axis causes an increase in the log period value by 1.48 keeping other covariates constant.  
+
+In general the standard error of the covariates has to be closer to zero to get a good fit.  
+When we observe the standard error values of the covariates, **all the covariates have a standard error value very close to zero which is a good sign.**   
+
+We observe that the **Adjusted R-squared value is 0.9795 i.e approximately 98% of the variation in the log(period) variable is explained by the covariates.**   
+It is traditionally known that higher the adjusted R-squared value, better the fit of the model.  
+**Overall, we can conclude that our model is a good fit.**
